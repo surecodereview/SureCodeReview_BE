@@ -1,16 +1,16 @@
+const cors = require('cors');
 const express = require('express');
 const { exec } = require('child_process'); // Git 명령어 실행을 위한 모듈
 const app = express();
 const port = 8080;
 const { spawn } = require('child_process');
 
-// 특정 레포지토리 경로
-const repoPath = 'C:\\Users\\user\\Desktop\\SureCodeReview\\SureCodeReview_FE'; // 여기에 레포지토리 경로를 입력하세요.
+app.use(cors());
 
 // 모든 브랜치 목록을 가져오는 함수
-const getBranches = () => {
+const getBranches = (repoPath) => {
     return new Promise((resolve, reject) => {
-        exec(`git -C ${repoPath} branch`, (error, stdout, stderr) => {
+        exec(`git -C "${repoPath}" branch`, (error, stdout, stderr) => {
             if (error) {
                 reject(`Error: ${stderr}`);
             }
@@ -21,9 +21,9 @@ const getBranches = () => {
 };
 
 // 특정 브랜치의 커밋 리스트를 가져오는 함수
-const getCommits = (branch) => {
+const getCommits = (repoPath, branch) => {
     return new Promise((resolve, reject) => {
-        exec(`git -C ${repoPath} log ${branch} --pretty=format:"%h - %an, %s"`, (error, stdout, stderr) => {
+        exec(`git -C "${repoPath}" log ${branch} --pretty=format:"%h - %an, %s"`, (error, stdout, stderr) => {
             if (error) {
                 reject(`Error: ${stderr}`);
             }
@@ -33,9 +33,8 @@ const getCommits = (branch) => {
     });
 };
 
-
 // 특정 커밋의 변경 사항을 가져오는 함수
-const getChanges = (commitIds) => {
+const getChanges = (repoPath, commitIds) => {
     return new Promise(async (resolve, reject) => {
         try {
             const changes = [];
@@ -75,13 +74,22 @@ const getChanges = (commitIds) => {
     });
 };
 
-
-
+// 경로에서 백슬래시를 슬래시로 변환하는 함수
+const normalizePath = (path) => {
+    return path.replace(/\\/g, '/'); // 모든 \를 /로 변환
+};
 
 // 해당하는 레포지토리의 로컬 브랜치 목록 반환 API
 app.get('/api/branches', async (req, res) => {
+    const { path } = req.query; // 쿼리 파라미터에서 repositoryPath 받기
+    if (!path) {
+        console.error("Repository path is required"); // 에러 로그
+        return res.status(400).send("Repository path is required");
+    }
+
     try {
-        const branches = await getBranches();
+        const normalizedPath = normalizePath(path); // 경로 정규화
+        const branches = await getBranches(normalizedPath); // 정규화된 경로 사용
         res.json({ branches });
     } catch (error) {
         res.status(500).send(error);
@@ -91,8 +99,14 @@ app.get('/api/branches', async (req, res) => {
 // 특정 브랜치의 커밋 리스트 반환 API
 app.get('/api/commits/:branch', async (req, res) => {
     const { branch } = req.params;
+    const { path } = req.query; // 쿼리 파라미터에서 repositoryPath 받기
+    if (!path) {
+        return res.status(400).send("Repository path is required");
+    }
+
     try {
-        const commits = await getCommits(branch);
+        const normalizedPath = normalizePath(path); // 경로 정규화
+        const commits = await getCommits(normalizedPath, branch); // 정규화된 경로 사용
         res.json({ commits });
     } catch (error) {
         res.status(500).send(error);
@@ -101,10 +115,16 @@ app.get('/api/commits/:branch', async (req, res) => {
 
 // 선택한 커밋의 변경 사항 반환 API
 app.get('/api/changes', async (req, res) => {
-    const commitIds = ['bde9b3e', '0cb510e', '18ad2b2'];
-    // const { commitIds } = req.body;
+    const { commitIds } = req.query; // 쿼리 파라미터에서 commitIds 받기
+    const { path } = req.query; // 쿼리 파라미터에서 repositoryPath 받기
+
+    if (!commitIds || !path) {
+        return res.status(400).send("Commit IDs and repository path are required");
+    }
+
     try {
-        const changes = await getChanges(commitIds);
+        const normalizedPath = normalizePath(path); // 경로 정규화
+        const changes = await getChanges(normalizedPath, Array.isArray(commitIds) ? commitIds : [commitIds]); // 정규화된 경로 사용
         res.json({ changes });
     } catch (error) {
         res.status(500).send(error);
