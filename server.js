@@ -3,7 +3,7 @@ const express = require('express');
 const { exec } = require('child_process'); // Git 명령어 실행을 위한 모듈
 const app = express();
 const port = 8080;
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 app.use(cors());
 
@@ -33,6 +33,11 @@ const getCommits = (repoPath, branch) => {
     });
 };
 
+const getCommitTimestamp = (repoPath, commitId) => {
+    const command = `git -C "${repoPath}" show -s --format=%ct ${commitId}`;
+    return parseInt(execSync(command).toString().trim());
+};
+
 // 특정 커밋의 변경 사항을 가져오는 함수
 const getChanges = (repoPath, commitIds) => {
     return new Promise(async (resolve, reject) => {
@@ -42,7 +47,6 @@ const getChanges = (repoPath, commitIds) => {
             for (const id of commitIds) {
                 const command = `git`;
                 const args = ['-C', repoPath, 'diff', `${id}^`, id];
-
                 const gitProcess = spawn(command, args);
 
                 let stdout = '';
@@ -56,17 +60,24 @@ const getChanges = (repoPath, commitIds) => {
                     stderr += data.toString();
                 });
 
-                gitProcess.on('close', (code) => {
-                    if (code !== 0) {
-                        reject(`Error: ${stderr}`);
-                    } else {
-                        changes.push({ id, changes: stdout });
-                        if (changes.length === commitIds.length) {
-                            resolve(changes);
+                await new Promise((resolveProcess, rejectProcess) => {
+                    gitProcess.on('close', (code) => {
+                        if (code !== 0) {
+                            console.error(`Error for commit ${id}: ${stderr}`);
+                            rejectProcess(`Error for commit ${id}: ${stderr}`);
+                        } else {
+                            const timestamp = getCommitTimestamp(repoPath, id);
+                            changes.push({ id, changes: stdout, timestamp });
+                            resolveProcess();
                         }
-                    }
+                    });
                 });
             }
+
+            // 타임스탬프를 기준으로 내림차순 정렬
+            changes.sort((a, b) => b.timestamp - a.timestamp);
+
+            resolve(changes);
         } catch (error) {
             console.error(`Error: ${error}`);
             reject(`Error: ${error}`);
@@ -124,7 +135,8 @@ app.get('/api/changes', async (req, res) => {
 
     try {
         const normalizedPath = normalizePath(path); // 경로 정규화
-        const changes = await getChanges(normalizedPath, Array.isArray(commitIds) ? commitIds : [commitIds]); // 정규화된 경로 사용
+        const commitIdsArray = commitIds.split(',');
+        const changes = await getChanges(normalizedPath, commitIdsArray); // 정규화된 경로 사용
         res.json({ changes });
     } catch (error) {
         res.status(500).send(error);
