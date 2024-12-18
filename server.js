@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const gitRoutes = require('./routes/gitRoutes');
+const gitRemoteRoutes = require('./routes/gitRemoteRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 
 const app = express();
@@ -10,6 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/api', gitRoutes);
+app.use('/api/remote', gitRemoteRoutes);
 app.use('/api', reviewRoutes);
 
 app.listen(port, () => {
