@@ -13,6 +13,7 @@ router.post('/review', async (req, res) => {
             const review = await reviewCode(change.changes);
             return { id: change.id, review };
         }));
+        console.log(reviewResults);
 
         res.json({ reviews: reviewResults });
     } catch (error) {
